@@ -16,7 +16,7 @@ def count_calls(method: Callable) -> Callable:
     Decorator to count the number of times a method is called.
     """
     @wraps(method)
-    def invoker(self, *args, **kwargs): -> Any:
+    def invoker(self, *args, **kwargs) -> Any:
         '''Invokes the given method after incrementing its call counter.
         '''
         if isinstance(self._redis, redis.Redis):
@@ -31,13 +31,16 @@ def call_history(method: Callable) -> Callable:
     Decorator to store the history of inputs and outputs for a method
     """
     @wraps(method)
-    def invoker(self, *args, **kwargs): -> Any:
+    def invoker(self, *args, **kwargs) -> Any:
+        '''Returns the method's output after storing its inputs and output.
+        '''
         input_key = f"{method.__qualname__}:inputs"
         output_key = f"{method.__qualname__}:outputs"
 
+        output = method(self, *args, **kwargs)
+
         self._redis.rpush(input_key, str(args))
-        result = method(self, *args, **kwargs)
-        self._redis.rpush(output_key, str(result))
+        self._redis.rpush(output_key, str(output))
 
         return output
 
@@ -75,7 +78,7 @@ class Cache:
     retrieving, converting data, counting method calls, and tracking call
     history.
     """
-    def __init__(self): -> None:
+    def __init__(self) -> None:
         self._redis = redis.Redis()
         self._redis.flushdb(True)
 
@@ -86,8 +89,9 @@ class Cache:
         self._redis.set(key, data)
         return key
 
-    def get(self, key: str, fn: Optional[Callable] = None) ->
-    Union[str, bytes, int, float, None]:
+    def get(
+            self, key: str, fn: Callable = None,
+            ) -> Union[str, bytes, int, float]:
         data = self._redis.get(key)
         if data is not None and fn is not None:
             return fn(data)
