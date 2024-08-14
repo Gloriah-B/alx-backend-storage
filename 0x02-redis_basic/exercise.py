@@ -7,8 +7,8 @@ calls using Redis.
 
 import redis
 import uuid
-import functools
-from typing import Union, Callable, Optional
+from functools import wraps
+from typing import Any, Union, Callable, Optional
 
 
 def count_calls(method: Callable) -> Callable:
@@ -21,10 +21,12 @@ def count_calls(method: Callable) -> Callable:
     Returns:
         Callable: The wrapped method with added counting functionality.
     """
-    @functools.wraps(method)
-    def wrapper(self, *args, **kwargs):
-        key = f"{method.__qualname__}:calls"
-        self._redis.incr(key)
+    @wraps(method)
+    def wrapper(self, *args, **kwargs): -> Any:
+        '''Invokes the given method after incrementing its call counter.
+        '''
+        if isinstance(self._redis, redis.Redis):
+            self._redis.incr(method.__qualname__)
         return method(self, *args, **kwargs)
 
     return wrapper
@@ -40,8 +42,8 @@ def call_history(method: Callable) -> Callable:
     Returns:
         Callable: The wrapped method with added history tracking functionality.
     """
-    @functools.wraps(method)
-    def wrapper(self, *args, **kwargs):
+    @wraps(method)
+    def wrapper(self, *args, **kwargs): -> Any:
         input_key = f"{method.__qualname__}:inputs"
         output_key = f"{method.__qualname__}:outputs"
 
@@ -61,33 +63,36 @@ def replay(method: Callable):
     Args:
         method (Callable): The method whose history should be displayed.
     """
-    redis_client = method.__self__._redis
-    method_name = method.__qualname__
-
-    input_key = f"{method_name}:inputs"
-    output_key = f"{method_name}:outputs"
-
-    inputs = redis_client.lrange(input_key, 0, -1)
-    outputs = redis_client.lrange(output_key, 0, -1)
-
-    print(f"{method_name} was called {len(inputs)} times:")
-
-    for input_data, output_data in zip(inputs, outputs):
-        input_str = input_data.decode("utf-8")
-        output_str = output_data.decode("utf-8")
-        print(f"{method_name}(*{input_str}) -> {output_str}")
+    if fn is None or not hasattr(fn, '__self__'):
+        return
+    redis_store = getattr(fn.__self__, '_redis', None)
+    if not isinstance(redis_store, redis.Redis):
+        return
+    fxn_name = fn.__qualname__
+    in_key = '{}:inputs'.format(fxn_name)
+    out_key = '{}:outputs'.format(fxn_name)
+    fxn_call_count = 0
+    if redis_store.exists(fxn_name) != 0:
+        fxn_call_count = int(redis_store.get(fxn_name))
+    print('{} was called {} times:'.format(fxn_name, fxn_call_count))
+    fxn_inputs = redis_store.lrange(in_key, 0, -1)
+    fxn_outputs = redis_store.lrange(out_key, 0, -1)
+    for fxn_input, fxn_output in zip(fxn_inputs, fxn_outputs):
+        print('{}(*{}) -> {}'.format(
+            fxn_name,
+            fxn_input.decode("utf-8"),
+            fxn_output,
+        ))
 
 
 class Cache:
-    """
-    The Cache class provides methods to interact with Redis for storing,
+    """The Cache class provides methods to interact with Redis for storing,
     retrieving, converting data, counting method calls, and tracking call
     history.
     """
-
-    def __init__(self):
+    def __init__(self): -> None:
         self._redis = redis.Redis()
-        self._redis.flushdb()
+        self._redis.flushdb(True)
 
     @count_calls
     @call_history
