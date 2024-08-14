@@ -14,36 +14,24 @@ from typing import Any, Union, Callable, Optional
 def count_calls(method: Callable) -> Callable:
     """
     Decorator to count the number of times a method is called.
-
-    Args:
-        method (Callable): The method to be wrapped and counted.
-
-    Returns:
-        Callable: The wrapped method with added counting functionality.
     """
     @wraps(method)
-    def wrapper(self, *args, **kwargs): -> Any:
+    def invoker(self, *args, **kwargs): -> Any:
         '''Invokes the given method after incrementing its call counter.
         '''
         if isinstance(self._redis, redis.Redis):
             self._redis.incr(method.__qualname__)
         return method(self, *args, **kwargs)
 
-    return wrapper
+    return invoker
 
 
 def call_history(method: Callable) -> Callable:
     """
-    Decorator to store the history of inputs and outputs for a method.
-
-    Args:
-        method (Callable): The method to be wrapped and tracked.
-
-    Returns:
-        Callable: The wrapped method with added history tracking functionality.
+    Decorator to store the history of inputs and outputs for a method
     """
     @wraps(method)
-    def wrapper(self, *args, **kwargs): -> Any:
+    def invoker(self, *args, **kwargs): -> Any:
         input_key = f"{method.__qualname__}:inputs"
         output_key = f"{method.__qualname__}:outputs"
 
@@ -51,17 +39,14 @@ def call_history(method: Callable) -> Callable:
         result = method(self, *args, **kwargs)
         self._redis.rpush(output_key, str(result))
 
-        return result
+        return output
 
-    return wrapper
+    return invoker
 
 
-def replay(method: Callable):
+def replay(method: Callable) -> None:
     """
     Display the history of calls of a particular function.
-
-    Args:
-        method (Callable): The method whose history should be displayed.
     """
     if fn is None or not hasattr(fn, '__self__'):
         return
